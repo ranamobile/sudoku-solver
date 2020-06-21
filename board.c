@@ -5,38 +5,69 @@
 typedef struct Board
 {
     int spaces[9][9];
+    int options[9][9][10];
 } Board;
 
 
-int * get_potential_values(Board * board, int row, int col)
+int get_number_unknown_values(Board * board)
 {
-    int * potential = (int *) malloc(sizeof(int) * 10);
-    int value = board->spaces[row][col];
-    for (int option = 0; option < 10; option++)
+    int count = 0;
+    for (int row = 0; row < 9; row++)
     {
-        if (value == 0)
+        for (int col = 0; col < 9; col++)
         {
-            potential[option] = 0;
+            if (board->spaces[row][col] == 0)
+            {
+                count++;
+            }
         }
-        else
-        {
-            potential[option] = 1;
-        }
-
     }
+    return count;
+}
 
-    potential[0] = 1;
+
+int get_number_potential_values(Board * board, int row, int col)
+{
+    int count = 0;
+    for (int option = 1; option < 10; option++)
+    {
+        if (board->options[row][col][option] == 0)
+        {
+            count++;
+        }
+    }
+    return count;
+}
+
+
+int get_next_option(Board * board, int row, int col)
+{
+    for (int option = 1; option < 10; option++)
+    {
+        if (board->options[row][col][option] == 0)
+        {
+            return option;
+        }
+    }
+    return -1;
+}
+
+
+void update_potentional_values(Board * board, int row, int col)
+{
+    // Eliminate taken values in the same row or same col
     for (int trow = 0; trow < 9; trow++)
     {
         int value = board->spaces[trow][col];
-        potential[value] = 1;
+        board->options[row][col][value] = 1;
     }
     for (int tcol = 0; tcol < 9; tcol++)
     {
         int value = board->spaces[row][tcol];
-        potential[value] = 1;
+        board->options[row][col][value] = 1;
     }
 
+    // Eliminate taken values in the same box
     int rfactor = row / 3;
     int cfactor = col / 3;
     rfactor = rfactor * 3;
@@ -46,62 +77,88 @@ int * get_potential_values(Board * board, int row, int col)
         for (int tcol = cfactor; tcol < cfactor + 3; tcol++)
         {
             int value = board->spaces[trow][tcol];
-            potential[value] = 1;
+            board->options[row][col][value] = 1;
         }
     }
 
-    return potential;
-}
-
-
-int get_number_of_possibilities(int * possibilities)
-{
-    int count = 0;
+    // If check all options and if nothing in same row, same col, or
+    // same box, set as actual value.
+    int flag = 0;
     for (int option = 1; option < 10; option++)
     {
-        if (possibilities[option] == 0)
+        if (board->options[row][col][option] == 0)
         {
-            count++;
+            int count = 0;
+            for (int trow = 0; trow < 9; trow++)
+            {
+                if (board->options[trow][col][option] == 0)
+                {
+                    count++;
+                }
+            }
+            if (count == 1)
+            {
+                flag = option;
+                break;
+            }
+
+            count = 0;
+            for (int tcol = 0; tcol < 9; tcol++)
+            {
+                if (board->options[row][tcol][option] == 0)
+                {
+                    count++;
+                }
+            }
+            if (count == 1)
+            {
+                flag = option;
+                break;
+            }
+
+            count = 0;
+            for (int trow = rfactor; trow < rfactor + 3; trow++)
+            {
+                for (int tcol = cfactor; tcol < cfactor + 3; tcol++)
+                {
+                    if (board->options[trow][tcol][option] == 0)
+                    {
+                        count++;
+                    }
+                }
+            }
+            if (count == 1)
+            {
+                flag = option;
+                break;
+            }
         }
     }
-    return count;
-}
 
-
-int get_next_option(int * possibilities, int index)
-{
-    int count = 0;
-    for (int option = index; option < 10; option++)
+    if (flag > 0)
     {
-        if (possibilities[option] == 0)
+        for (int option = 0; option < 10; option++)
         {
-            return option;
+            board->options[row][col][option] = flag == option ? 0 : 1;
         }
     }
-    return -1;
 }
 
 
-int fill_known_values(Board * board)
+int update_known_values(Board * board)
 {
-    int * possibilities = NULL;
     int fills = 0;
     for (int row = 0; row < 9; row++)
     {
         for (int col = 0; col < 9; col++)
         {
-            possibilities = get_potential_values(board, row, col);
-            if (get_number_of_possibilities(possibilities) == 1)
+            update_potentional_values(board, row, col);
+            if (get_number_potential_values(board, row, col) == 1)
             {
-                int option = get_next_option(possibilities, 0);
+                int option = get_next_option(board, row, col);
                 board->spaces[row][col] = option;
                 fills++;
                 printf("Filling %d, %d: %d\n", row, col, option);
-            }
-            if (possibilities)
-            {
-                free(possibilities);
-                possibilities = NULL;
             }
         }
     }
@@ -128,6 +185,13 @@ Board * load_board(char * filepath)
         {
             fscanf(fp, "%i ", &value);
             board->spaces[row][col] = value;
+
+            // Reset potential values to 0 if value is unknown (0) or 1 if value is known
+            board->options[row][col][0] = 1;
+            for (int option = 1; option < 10; option++)
+            {
+                board->options[row][col][option] = value == 0 ? 0 : 1;
+            }
         }
     }
 
@@ -173,9 +237,15 @@ int main(int argc, char * argv[])
     print_board(board);
 
     int fills;
-    while ((fills = fill_known_values(board)) > 0)
+    while ((fills = update_known_values(board)) > 0)
     {
         print_board(board);
+    }
+
+    int unsolved = get_number_unknown_values(board);
+    if (unsolved == 0)
+    {
+        printf("Solved the puzzle!!\n");
     }
 
     free(board);
