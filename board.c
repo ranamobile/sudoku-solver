@@ -1,12 +1,8 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
-
-typedef struct Board
-{
-    int spaces[9][9];
-    int options[9][9][10];
-} Board;
+#include "board.h"
 
 
 int get_number_unknown_values(Board * board)
@@ -166,6 +162,51 @@ int update_known_values(Board * board)
 }
 
 
+void update_guess_values(Board * board, int guesses)
+{
+    Board * guess;
+    for (int row = 0; row < 9; row++)
+    {
+        for (int col = 0; col < 9; col++)
+        {
+            if (board->spaces[row][col] == 0)
+            {
+                guess = (Board *) malloc(sizeof(Board));
+                memcpy(guess, board, sizeof(Board));
+
+                int option;
+                while ((option = get_next_option(guess, row, col)) > 0)
+                {
+                    printf("Guessing %d, %d: %d\n", row, col, option);
+                    guess->spaces[row][col] = option;
+                    while (update_known_values(guess) > 0)
+                    {
+                        print_board(guess);
+                    }
+
+                    if (get_number_unknown_values(guess) == 0)
+                    {
+                        printf("Solved the puzzle!!\n");
+                        free(guess);
+                        return;
+                    }
+                    else if (guesses < MAX_NUM_GUESSES)
+                    {
+                        update_guess_values(guess, guesses + 1);
+                    }
+                    else
+                    {
+                        guess->options[row][col][option] = 1;
+                    }
+                }
+
+                free(guess);
+            }
+        }
+    }
+}
+
+
 Board * load_board(char * filepath)
 {
     FILE * fp = fopen(filepath, "r");
@@ -242,10 +283,13 @@ int main(int argc, char * argv[])
         print_board(board);
     }
 
-    int unsolved = get_number_unknown_values(board);
-    if (unsolved == 0)
+    if (get_number_unknown_values(board) == 0)
     {
         printf("Solved the puzzle!!\n");
+    }
+    else
+    {
+        update_guess_values(board, 1);
     }
 
     free(board);
